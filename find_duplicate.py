@@ -37,6 +37,7 @@ def find_dupplicate(root):
 			for g in md5_dup_list:
 				res.append(g)
 			del fnlist[:]
+			refsize = size
 		
 		filename = line[len(token[0]):].strip()
 		fnlist.append(filename)
@@ -45,16 +46,11 @@ def find_dupplicate(root):
 # Given a list of file names, export names of the files that have the same md5s
 def detect_md5_dup(fnlist):
 	res = []
-	'''
 	md5dict = {}
 	for fn in fnlist:
 		md5 = calc_md5(fn)
-		print("---\n" + fn + "\t" + md5)
-		print(md5dict.get(md5))
-		if md5dict.get(md5) == None:
+		if md5 not in md5dict:
 			md5dict[md5] = [fn]
-			print(md5dict.get(md5))
-			print(md5dict)
 		else:
 			print("Duplicate MD5!")
 			md5dict[md5].append(fn)
@@ -62,23 +58,7 @@ def detect_md5_dup(fnlist):
 		if len(md5dict[k]) >=2:
 			res.append(md5dict[k])
 	return res
-	'''
-	md5dict = defaultdict(list)	
-	for fn in fnlist:
-		#md5 = calc_md5(fn)
-		#md5 = ''
-		with open(fn, mode = 'rb') as f:
-			d = hashlib.md5()
-			for buf in iter(partial(f.read, 128), b''):
-				d.update(buf)
-			md5 = str(d.hexdigest())		
-		md5dict[md5].append(fn)
-	for k in md5dict.keys():
-		print(k)
-		print(md5dict[k])
-		if len(md5dict[k]) >=2:
-			res.append(md5dict[k])
-	return res	
+
 	
 # Calculate MD5 of each file, based on its filename	
 def calc_md5(filename):
@@ -135,14 +115,8 @@ def sort_size(inname, outname):
 								
 if __name__ == "__main__":
 	fn1 = "summary.txt"
-	'''
-	list_files(sys.argv[1], fn1)
-	fn2 = "summary_sorted.txt"
-	sort_size(fn1, fn2)
-
-	print (calc_md5(sys.argv[1]))
-	'''
 	dupp_file_group = 	find_dupplicate (sys.argv[1])
+	print("***RESULT***")
 	for g in dupp_file_group:
 		print("---")
 		for fn in g:
