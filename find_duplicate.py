@@ -54,18 +54,11 @@ def find_dupplicate(root):
 
 # Given a list of file names, export names of the files that have the same md5s - COURSE-GRAINED
 def detect_md5_dup_coarse(fnlist):
-	res = []
-	md5dict = {}
-	for fn in fnlist:
-		md5 = calc_md5_coarse(fn)
-		if md5 not in md5dict:
-			md5dict[md5] = [fn]
-		else:
-			md5dict[md5].append(fn)
-	for k in md5dict.keys():
-		if len(md5dict[k]) >=2:
-			res.append(md5dict[k])
-	return res
+	d = {}
+	v = list(map(calc_md5_coarse, fnlist))
+	for i in range(len(v)):
+		d.setdefault(v[i],[]).append(fnlist[i])
+	return filter(lambda x:len(x)>1, d.values())
 	
 def calc_md5_coarse(filename):
 	if os.path.isfile(filename) == False:
@@ -83,11 +76,11 @@ def calc_md5_coarse(filename):
 
 # Given a list of file names, export names of the files that have the same md5s - FIND-GRAINED
 def detect_md5_dup(fnlist):
-  d = {}
-  v = map(calc_md5, fnlist)
-  for i in range(len(v)):
-    d.setdefault(v[i],[]).append(fnlist[i])
-  return filter(lambda x:len(x)>1, d.values())
+	d = {}
+	v = list(map(calc_md5, fnlist))
+	for i in range(len(v)):
+		d.setdefault(v[i],[]).append(fnlist[i])
+	return filter(lambda x:len(x)>1, d.values())
 	
 # Calculate MD5 of each file, based on its filename	
 def calc_md5(filename):
