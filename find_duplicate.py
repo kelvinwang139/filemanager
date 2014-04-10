@@ -12,12 +12,15 @@ TO DO:
 	- check files that have the same size 	OK
 	- check MD5 of the first few bytes 
 	- calculate MD5				OK
-	- finally check file content with regard to bytes		
+	- multi-thread 	to process multiple folder at once 
+	- check file content with regard to bytes
+	- 	
 '''
 
 import os, sys, stat
 import hashlib
 import math
+import threading
 from functools import partial 
 from collections import defaultdict
 
@@ -109,7 +112,31 @@ def list_files(root, outfilename):
 				info = os.stat(path);
 				filesize = info[stat.ST_SIZE];
 				summary.write(str(filesize) + "\t" + path   + "\n");
+				
+# list files - multithread version
+def list_files_multithread(root, outfilename):
+	threads = []
+	filelock = threading.Lock()
+	for(thisdir, subshere, fileshere) in os.walk(root):
+		# create a new thread to store information of files in this folder
+		thread = threading.Thread(target = storeinfo, args = (filelock, thisdir, fileshere, outfilename))
+
+		threads.append(thread);
+		thread.start()
+	for thread in threads: thread.join()
+	
 		
+def storeinfo(lock, dir, filelist, outfilename):
+	print(dir)
+	with lock: 
+		summary = open(outfilename, 'a')
+		for fname in filelist:
+			path = os.path.join(dir, fname)
+			if os.path.isfile(path):
+				info = os.stat(path);
+				filesize = info[stat.ST_SIZE];
+				summary.write(str(filesize) + "\t" + path   + "\n");
+			
 # sort a summary file, based on file size
 def sort_size(inname, outname):
 	# sort according to file size 
@@ -140,10 +167,16 @@ def sort_size(inname, outname):
 			out.write(str(s) + "\t" + file + "\n")
 								
 if __name__ == "__main__":
-	fn1 = "summary.txt"
-	dupp_file_group = 	find_dupplicate (sys.argv[1])
-	print("***RESULT***")
-	for g in dupp_file_group:
-		print("---")
-		for fn in g:
-			print(fn)
+	### WORKING VERSION 1 ###
+# 	fn1 = "summary.txt"
+# 	dupp_file_group = 	find_dupplicate (sys.argv[1])
+# 	print("***RESULT***")
+# 	for g in dupp_file_group:
+# 		print("---")
+# 		for fn in g:
+# 			print(fn)
+	### END WORKING VERSION 1 ###
+	
+	### VERSION2: Doing all things in threads
+	fn = "out.txt"
+	list_files_multithread(sys.argv[1], fn)
