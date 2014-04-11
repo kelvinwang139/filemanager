@@ -21,6 +21,7 @@ import os, sys, stat
 import hashlib
 import math
 import threading
+import time
 from functools import partial 
 from collections import defaultdict
 
@@ -113,25 +114,28 @@ def list_files(root, outfilename):
 				filesize = info[stat.ST_SIZE];
 				summary.write(str(filesize) + "\t" + path   + "\n");
 				
+MAX_NUM_OF_FILES = 10000
+
 # list files - multithread version
 def list_files_multithread(root, outfilename):
 	threads = []
+	paths = []
 	filelock = threading.Lock()
 	for(thisdir, subshere, fileshere) in os.walk(root):
-		# create a new thread to store information of files in this folder
-		thread = threading.Thread(target = storeinfo, args = (filelock, thisdir, fileshere, outfilename))
-
-		threads.append(thread);
-		thread.start()
+		paths.extend([os.path.join(thisdir, fname) for fname in fileshere])
+		if len(paths) > MAX_NUM_OF_FILES:
+			# create a new thread to store information of files in this folder
+			thread = threading.Thread(target = storeinfo, args = (filelock, paths, outfilename))
+			threads.append(thread)
+			thread.start()
+			del paths[0: len(paths)]
 	for thread in threads: thread.join()
 	
 		
-def storeinfo(lock, dir, filelist, outfilename):
-	print(dir)
+def storeinfo(lock, paths, outfilename):
 	with lock: 
 		summary = open(outfilename, 'a')
-		for fname in filelist:
-			path = os.path.join(dir, fname)
+		for path in paths:
 			if os.path.isfile(path):
 				info = os.stat(path);
 				filesize = info[stat.ST_SIZE];
@@ -178,5 +182,17 @@ if __name__ == "__main__":
 	### END WORKING VERSION 1 ###
 	
 	### VERSION2: Doing all things in threads
-	fn = "out.txt"
-	list_files_multithread(sys.argv[1], fn)
+	fn1 = "out_single.txt"
+	
+	start1 = time.time()
+	list_files(sys.argv[1], fn1)
+	end1 = time.time()
+	print ("[Singlethread] Time elapsed:")	
+	print (end1 - start1)
+	
+	fn2 = "out_multi.txt"
+	start2 = time.time()
+	list_files_multithread(sys.argv[1], fn2)
+	end2 = time.time()
+	print ("[Multithread] Time elapsed:")
+	print (end2 - start2)
