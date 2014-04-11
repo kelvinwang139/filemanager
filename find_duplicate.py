@@ -21,7 +21,9 @@ import os, sys, stat
 import hashlib
 import math
 import threading
+import _thread as thread
 import time
+import queue
 from functools import partial 
 from collections import defaultdict
 
@@ -115,31 +117,63 @@ def list_files(root, outfilename):
 				summary.write(str(filesize) + "\t" + path   + "\n");
 				
 MAX_NUM_OF_FILES = 10000
-
+fileinfoQueue = queue.Queue()		# shared object, infinite size
+	
 # list files - multithread version
 def list_files_multithread(root, outfilename):
+	# spawn consumer thread - write info to file 
+	
+	consumerthread = threading.Thread(target = consumer, args = (outfilename,))
+	consumerthread.daemon = True	#else cannot exit! 
+	consumerthread.start()
+	
+	# spawn producer threads - get info of the files 
 	threads = []
 	paths = []
-	filelock = threading.Lock()
 	for(thisdir, subshere, fileshere) in os.walk(root):
 		paths.extend([os.path.join(thisdir, fname) for fname in fileshere])
 		if len(paths) > MAX_NUM_OF_FILES:
 			# create a new thread to store information of files in this folder
-			thread = threading.Thread(target = storeinfo, args = (filelock, paths, outfilename))
+			pathscopy = paths
+			print(len(pathscopy))
+			thread = threading.Thread(target = getinfo, args = (pathscopy,))
 			threads.append(thread)
 			thread.start()
-			del paths[0: len(paths)]
+			del paths[0: len(paths)]		# reset the paths 
 	for thread in threads: thread.join()
+
+# functions for consumer thread: write file info to summary files
+def consumer(outfilename):
+	summary = open(outfilename,'w')
+	while True:
+		time.sleep(0.1)
+		try:
+			fileinfolist = fileinfoQueue.get(block=False)
+		except queue.Empty:
+			pass
+		else:
+			#print (len(fileinfolist))
+			for fileinfo in fileinfolist:
+				summary.write(fileinfo)
+
+# functions for producer thread, get info of given paths (path = dir + filename) and put into queue, waiting to be written
+def getinfo(paths):
+	# build up a file info list for these paths first
+	#print('Producer: receive ')
+	print(len(paths))
+	pathscopy = paths
+	print(len(pathscopy))
+	tmplist = []
+	for path in pathscopy: 
+		if os.path.isfile(path):
+			info = os.stat(path);
+			filesize = info[stat.ST_SIZE]
+			tmplist.append((str(filesize) + "\t" + path + "\n"))
 	
-		
-def storeinfo(lock, paths, outfilename):
-	with lock: 
-		summary = open(outfilename, 'a')
-		for path in paths:
-			if os.path.isfile(path):
-				info = os.stat(path);
-				filesize = info[stat.ST_SIZE];
-				summary.write(str(filesize) + "\t" + path   + "\n");
+	print(len(tmplist))
+	# put this list to the global queue
+	fileinfoQueue.put(tmplist, block = True)
+	
 			
 # sort a summary file, based on file size
 def sort_size(inname, outname):
@@ -182,14 +216,14 @@ if __name__ == "__main__":
 	### END WORKING VERSION 1 ###
 	
 	### VERSION2: Doing all things in threads
-	fn1 = "out_single.txt"
-	
-	start1 = time.time()
-	list_files(sys.argv[1], fn1)
-	end1 = time.time()
-	print ("[Singlethread] Time elapsed:")	
-	print (end1 - start1)
-	
+# 	fn1 = "out_single.txt"
+# 	
+# 	start1 = time.time()
+# 	list_files(sys.argv[1], fn1)
+# 	end1 = time.time()
+# 	print ("[Singlethread] Time elapsed:")	
+# 	print (end1 - start1)
+# 	
 	fn2 = "out_multi.txt"
 	start2 = time.time()
 	list_files_multithread(sys.argv[1], fn2)
