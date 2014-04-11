@@ -24,6 +24,7 @@ import threading
 import _thread as thread
 import time
 import queue
+import copy 
 from functools import partial 
 from collections import defaultdict
 
@@ -116,7 +117,7 @@ def list_files(root, outfilename):
 				filesize = info[stat.ST_SIZE];
 				summary.write(str(filesize) + "\t" + path   + "\n");
 				
-MAX_NUM_OF_FILES = 10000
+MAX_NUM_OF_FILES = 100
 fileinfoQueue = queue.Queue()		# shared object, infinite size
 	
 # list files - multithread version
@@ -134,13 +135,17 @@ def list_files_multithread(root, outfilename):
 		paths.extend([os.path.join(thisdir, fname) for fname in fileshere])
 		if len(paths) > MAX_NUM_OF_FILES:
 			# create a new thread to store information of files in this folder
-			pathscopy = paths
-			print(len(pathscopy))
+			pathscopy = copy.deepcopy(paths)
 			thread = threading.Thread(target = getinfo, args = (pathscopy,))
 			threads.append(thread)
 			thread.start()
 			del paths[0: len(paths)]		# reset the paths 
-	for thread in threads: thread.join()
+	total = len(threads)
+	count = 0
+	for thread in threads: 
+		thread.join()		
+		count = count + 1
+		print(count * 100 / total)
 
 # functions for consumer thread: write file info to summary files
 def consumer(outfilename):
@@ -152,17 +157,13 @@ def consumer(outfilename):
 		except queue.Empty:
 			pass
 		else:
-			#print (len(fileinfolist))
 			for fileinfo in fileinfolist:
 				summary.write(fileinfo)
 
 # functions for producer thread, get info of given paths (path = dir + filename) and put into queue, waiting to be written
 def getinfo(paths):
 	# build up a file info list for these paths first
-	#print('Producer: receive ')
-	print(len(paths))
-	pathscopy = paths
-	print(len(pathscopy))
+	pathscopy = copy.deepcopy(paths)
 	tmplist = []
 	for path in pathscopy: 
 		if os.path.isfile(path):
@@ -170,7 +171,6 @@ def getinfo(paths):
 			filesize = info[stat.ST_SIZE]
 			tmplist.append((str(filesize) + "\t" + path + "\n"))
 	
-	print(len(tmplist))
 	# put this list to the global queue
 	fileinfoQueue.put(tmplist, block = True)
 	
@@ -216,14 +216,14 @@ if __name__ == "__main__":
 	### END WORKING VERSION 1 ###
 	
 	### VERSION2: Doing all things in threads
-# 	fn1 = "out_single.txt"
-# 	
-# 	start1 = time.time()
-# 	list_files(sys.argv[1], fn1)
-# 	end1 = time.time()
-# 	print ("[Singlethread] Time elapsed:")	
-# 	print (end1 - start1)
-# 	
+	fn1 = "out_single.txt"
+	
+	start1 = time.time()
+	list_files(sys.argv[1], fn1)
+	end1 = time.time()
+	print ("[Singlethread] Time elapsed:")	
+	print (end1 - start1)
+	
 	fn2 = "out_multi.txt"
 	start2 = time.time()
 	list_files_multithread(sys.argv[1], fn2)
