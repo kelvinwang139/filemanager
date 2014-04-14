@@ -25,6 +25,7 @@ import _thread as thread
 import time
 import queue
 import copy 
+from multiprocessing import Process, Queue
 from functools import partial 
 from collections import defaultdict
 
@@ -109,7 +110,7 @@ def calc_md5(filename):
 def list_files(root, outfilename):
 	summary = open(outfilename, 'w') 
 	for(thisdir, subshere, fileshere) in os.walk(root):
-		summary.write('[' + thisdir + ']\n')
+		#summary.write('[' + thisdir + ']\n')
 		for fname in fileshere:
 			path = os.path.join(thisdir,fname)
 			if os.path.isfile(path):
@@ -120,6 +121,103 @@ def list_files(root, outfilename):
 MAX_NUM_OF_FILES = 100
 fileinfoQueue = queue.Queue()		# shared object, infinite size
 	
+
+
+#############################
+##### MULTIPROCESSING 
+#############################
+# producer process
+class Filelister(Process):
+	label = ' @'
+	def __init__(self, paths, queue):
+		self.paths = paths
+		self.post = queue
+		Process.__init__(self)
+		
+	def run(self):
+		tmplist = []
+		for path in self.paths:
+			if os.path.isfile(path):
+				info = os.stat(path);
+				filesize = info[stat.ST_SIZE]
+				tmplist.append((str(filesize) + "\t" + path + "\n"))	
+		# put this list to the global queue
+		self.post.put(tmplist, block = True)				
+			
+# consumer process
+class Fileinfowriter(Process):
+	label = ' @w'
+	def __init__(self, outfilename, queue):
+		self.out = outfilename
+		self.post = queue
+		Process.__init__(self)
+		
+	def run(self):
+		summary = open(self.out, 'w')
+		maxretries = 10
+		retries = 0
+		while True:
+			if(self.post.empty()):
+				retries = retries + 1
+				if(retries > maxretries):
+					break
+				time.sleep(0.1)
+			else:
+				retries = 0
+				try:
+					infolist = self.post.get(block=False)
+				except queue.empty:
+					print('no data...')
+				else:
+					for info in infolist:
+						summary.write(info)
+				
+				
+# list files - multiprocess version
+def list_files_multiprocess(root, outfilename):
+	# spawn producer processes - get info of the files
+	ps = []
+	paths = []
+	post = Queue()
+	c = Fileinfowriter(outfilename, post)
+	c.start()
+	for (thisdir, subshere, fileshere) in os.walk(root):
+		paths.extend([os.path.join(thisdir, fname) for fname in fileshere])
+		if len(paths) > MAX_NUM_OF_FILES:
+			# create a new process to store information of files in this folder
+			pathscopy = copy.deepcopy(paths)
+			p = Filelister(pathscopy, post)
+			p.start()
+			del paths[0: len(paths)]
+	total = len(ps)
+	for p in ps: 
+		p.join()
+	c.join()
+	
+#############################
+##### MULTITHREADING
+#############################	
+# functions for consumer thread: write file info to summary files
+def consumer(outfilename):
+	summary = open(outfilename,'w')
+	maxretries = 10
+	retries = 0
+	while True:
+		if(fileinfoQueue.empty()):
+			retries = retries + 1
+			if (retries > maxretries):
+				break
+			time.sleep(0.1)
+		else:
+			retries = 0
+			try:
+				fileinfolist = fileinfoQueue.get(block=False)
+			except queue.Empty:
+				pass
+			else:
+				for fileinfo in fileinfolist:
+					summary.write(fileinfo)
+
 # list files - multithread version
 def list_files_multithread(root, outfilename):
 	# spawn consumer thread - write info to file 
@@ -145,21 +243,9 @@ def list_files_multithread(root, outfilename):
 	for thread in threads: 
 		thread.join()		
 		count = count + 1
-		print(count * 100 / total)
-
-# functions for consumer thread: write file info to summary files
-def consumer(outfilename):
-	summary = open(outfilename,'w')
-	while True:
-		time.sleep(0.1)
-		try:
-			fileinfolist = fileinfoQueue.get(block=False)
-		except queue.Empty:
-			pass
-		else:
-			for fileinfo in fileinfolist:
-				summary.write(fileinfo)
-
+		# print(count * 100 / total)
+	consumerthread.join()
+	
 # functions for producer thread, get info of given paths (path = dir + filename) and put into queue, waiting to be written
 def getinfo(paths):
 	# build up a file info list for these paths first
@@ -224,9 +310,16 @@ if __name__ == "__main__":
 	print ("[Singlethread] Time elapsed:")	
 	print (end1 - start1)
 	
-	fn2 = "out_multi.txt"
+	fn2 = "out_multithread.txt"
 	start2 = time.time()
 	list_files_multithread(sys.argv[1], fn2)
 	end2 = time.time()
 	print ("[Multithread] Time elapsed:")
 	print (end2 - start2)
+	
+	fn3 = "out_multiprocess.txt"
+	start3 = time.time()
+	list_files_multiprocess(sys.argv[1], fn3)
+	end3 = time.time()
+	print ("[Multiprocess] Time elapsed:")
+	print (end3 - start3)
