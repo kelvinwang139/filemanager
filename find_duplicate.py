@@ -30,10 +30,15 @@ from functools import partial
 from collections import defaultdict
 
 
-def find_dupplicate(root):
+def find_dupplicate(root, multiprocess = False):
 	# get summary information about all files
 	summary = "summary.txt"	
-	list_files(root, summary)	
+	if(multiprocess == True):
+		print("multi")
+		list_files_multiprocess(root, summary)
+	else:
+		print("single")
+		list_files(root, summary)	
 	
 	# sort according to size
 	summarysorted = "summary_sorted.txt"
@@ -43,22 +48,89 @@ def find_dupplicate(root):
 	res = []
 	refsize = 0
 	fnlist = []
+	
+	# for multiprocessing
+	post = Queue()
+	pros = []	# list of processes we init
+	
 	for line in open(summarysorted):
 		token = line.split() 
 		size = int(token[0])
-		if size > refsize :	# 
-			# do md5 comparing on this list 
-			md5_dup_list_coarse = detect_md5_dup_coarse(fnlist)
-			for g in md5_dup_list_coarse:
-				md5_dup_list = detect_md5_dup(g)
-				for g2 in  md5_dup_list:
-					res.append(g2)
-			del fnlist[:]
-			refsize = size
-		
+		if size > refsize :
+			if multiprocess == False:
+                # do md5 comparing on this list
+				md5_dup_list_coarse = detect_md5_dup_coarse(fnlist)
+				for g in md5_dup_list_coarse :
+					md5_dup_list = detect_md5_dup(g)
+					for g2 in  md5_dup_list:
+						res.append(g2)
+				del fnlist[:]
+				refsize = size
+			else:
+			    # create a new process to store information of files in this folder
+				fnlistcopy = copy.deepcopy(fnlist)
+				p = MD5Checker(fnlistcopy, post)
+				p.start()
+				pros.append(p)
+				del fnlist[:]
+				refsize = size
+
 		filename = line[len(token[0]):].strip()
 		fnlist.append(filename)
+		
+	# the remaining files 
+	if multiprocess == False:
+		# do md5 comparing on this list
+		md5_dup_list_coarse = detect_md5_dup_coarse(fnlist)
+		for g in md5_dup_list_coarse :
+			md5_dup_list = detect_md5_dup(g)
+			for g2 in  md5_dup_list:
+				res.append(g2)
+		del fnlist[:]
+	else:
+		# create a new process to store information of files in this folder
+		fnlistcopy = copy.deepcopy(fnlist)
+		p = MD5Checker(fnlistcopy, post)
+		p.start()
+		pros.append(p)
+		del fnlist[:]
+	
+
+	
+	if multiprocess == True:
+		# wait for all processes done
+		for p in pros:
+			p.join()
+			
+		# get results from Queue
+		while(post.empty() == False):
+			try:
+				dupfnlist = post.get(block=True)
+			except queue.empty:
+				pass
+			else:
+				res.append(dupfnlist)
+	
 	return res
+
+#############################
+##### MULTIPROCESSING
+#############################
+# producer process
+class MD5Checker(Process):
+	def __init__(self, paths, queue):
+		self.fnlist = paths
+		self.post = queue
+		Process.__init__(self)
+
+	def run(self):
+		md5_dup_list_coarse = detect_md5_dup_coarse(self.fnlist)
+		for g in md5_dup_list_coarse:
+			md5_dup_list = detect_md5_dup(g)
+			for g2 in md5_dup_list:
+				# put this dupp file list to the global queue
+				self.post.put(g2, block = True)
+
 
 # Given a list of file names, export names of the files that have the same md5s - COURSE-GRAINED
 def detect_md5_dup_coarse(fnlist):
@@ -82,7 +154,7 @@ def calc_md5_coarse(filename):
 		pass
 	return res	
 
-# Given a list of file names, export names of the files that have the same md5s - FIND-GRAINED
+# Given a list of file names, export names of the files that have the same md5s - FINE-GRAINED
 def detect_md5_dup(fnlist):
 	d = {}
 	v = list(map(calc_md5, fnlist))
@@ -187,8 +259,17 @@ def list_files_multiprocess(root, outfilename):
 			# create a new process to store information of files in this folder
 			pathscopy = copy.deepcopy(paths)
 			p = Filelister(pathscopy, post)
+			ps.append(p)
 			p.start()
 			del paths[0: len(paths)]
+		
+		# the remaining files
+		pcopy = copy.deepcopy(paths)
+		p = Filelister(pcopy, post)
+		ps.append(p)
+		p.start()
+		del paths[:]
+		
 	total = len(ps)
 	for p in ps: 
 		p.join()
@@ -259,7 +340,6 @@ def getinfo(paths):
 	
 	# put this list to the global queue
 	fileinfoQueue.put(tmplist, block = True)
-	
 			
 # sort a summary file, based on file size
 def sort_size(inname, outname):
@@ -291,35 +371,33 @@ def sort_size(inname, outname):
 			out.write(str(s) + "\t" + file + "\n")
 								
 if __name__ == "__main__":
-	### WORKING VERSION 1 ###
-# 	fn1 = "summary.txt"
-# 	dupp_file_group = 	find_dupplicate (sys.argv[1])
-# 	print("***RESULT***")
-# 	for g in dupp_file_group:
-# 		print("---")
-# 		for fn in g:
-# 			print(fn)
-	### END WORKING VERSION 1 ###
+	dupp_file_group = 	find_dupplicate (sys.argv[1], multiprocess = False)
+	print("***RESULT***")
+	for g in dupp_file_group:
+		print("---")
+		for fn in g:
+			print(fn)	
+		print("---")
 	
-	### VERSION2: Doing all things in threads
-	fn1 = "out_single.txt"
-	
-	start1 = time.time()
-	list_files(sys.argv[1], fn1)
-	end1 = time.time()
-	print ("[Singlethread] Time elapsed:")	
-	print (end1 - start1)
-	
-	fn2 = "out_multithread.txt"
-	start2 = time.time()
-	list_files_multithread(sys.argv[1], fn2)
-	end2 = time.time()
-	print ("[Multithread] Time elapsed:")
-	print (end2 - start2)
-	
-	fn3 = "out_multiprocess.txt"
-	start3 = time.time()
-	list_files_multiprocess(sys.argv[1], fn3)
-	end3 = time.time()
-	print ("[Multiprocess] Time elapsed:")
-	print (end3 - start3)
+	### TEST singlethread - multithread - multiprocessing performance
+# 	fn1 = "out_single.txt"
+# 	
+# 	start1 = time.time()
+# 	list_files(sys.argv[1], fn1)
+# 	end1 = time.time()
+# 	print ("[Singlethread] Time elapsed:")	
+# 	print (end1 - start1)
+# 	
+# 	fn2 = "out_multithread.txt"
+# 	start2 = time.time()
+# 	list_files_multithread(sys.argv[1], fn2)
+# 	end2 = time.time()
+# 	print ("[Multithread] Time elapsed:")
+# 	print (end2 - start2)
+# 	
+# 	fn3 = "out_multiprocess.txt"
+# 	start3 = time.time()
+# 	list_files_multiprocess(sys.argv[1], fn3)
+# 	end3 = time.time()
+# 	print ("[Multiprocess] Time elapsed:")
+# 	print (end3 - start3)
