@@ -1,18 +1,19 @@
 
 
 '''
-HOW TO RUN 
-- Run as program:
-	python3 find_duplicate.py [folder name]
 
-Find duplicate files on a specific directory
+Find duplicate files in an arbitrary directory tree.
+
+HOW TO RUN
+	python3 find_duplicate.py [directory name]
+
 TO DO: 
 	- check file size first		OK
 	- sort file size		OK	
 	- check files that have the same size 	OK
 	- check MD5 of the first few bytes 
 	- calculate MD5				OK
-	- multi-thread 	to process multiple folder at once 
+	- multi-thread 	to process multiple folder at once  OK 
 	- check file content with regard to bytes
 	- 	
 '''
@@ -25,7 +26,8 @@ import _thread as thread
 import time
 import queue
 import copy 
-from multiprocessing import Process, Queue
+import multiprocessing
+from multiprocessing import Process, Queue, Pool
 from functools import partial 
 from collections import defaultdict
 
@@ -44,7 +46,6 @@ def find_dupplicate(root, multiprocess = False):
 	summarysorted = "summary_sorted.txt"
 	sort_size(summary,summarysorted)
 	
-	# scan the sorted file, group files with respect to their sizes
 	res = []
 	refsize = 0
 	fnlist = []
@@ -52,7 +53,11 @@ def find_dupplicate(root, multiprocess = False):
 	# for multiprocessing
 	post = Queue()
 	pros = []	# list of processes we init
+	pool = multiprocessing.Pool(10)
 	
+	proc_count = 0
+	
+	# scan the sorted file, group files with respect to their sizes
 	for line in open(summarysorted):
 		token = line.split() 
 		size = int(token[0])
@@ -69,6 +74,7 @@ def find_dupplicate(root, multiprocess = False):
 			else:
 			    # create a new process to store information of files in this folder
 				fnlistcopy = copy.deepcopy(fnlist)
+				
 				p = MD5Checker(fnlistcopy, post)
 				p.start()
 				pros.append(p)
@@ -90,12 +96,11 @@ def find_dupplicate(root, multiprocess = False):
 	else:
 		# create a new process to store information of files in this folder
 		fnlistcopy = copy.deepcopy(fnlist)
+		
 		p = MD5Checker(fnlistcopy, post)
 		p.start()
 		pros.append(p)
 		del fnlist[:]
-	
-
 	
 	if multiprocess == True:
 		# wait for all processes done
@@ -371,7 +376,7 @@ def sort_size(inname, outname):
 			out.write(str(s) + "\t" + file + "\n")
 								
 if __name__ == "__main__":
-	dupp_file_group = 	find_dupplicate (sys.argv[1], multiprocess = False)
+	dupp_file_group = 	find_dupplicate (sys.argv[1], multiprocess = True)
 	print("***RESULT***")
 	for g in dupp_file_group:
 		print("---")
